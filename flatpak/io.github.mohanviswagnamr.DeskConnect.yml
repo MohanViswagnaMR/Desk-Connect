@@ -1,0 +1,40 @@
+id: io.github.mohanviswagnamr.DeskConnect
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+command: deskconnect
+
+finish-args:
+  # TCP runs over the USB-C / Thunderbolt point-to-point network interface.
+  - --share=network
+  # Native Wayland with an X11 fallback (Fedora & Nobara default to Wayland).
+  - --socket=wayland
+  - --socket=fallback-x11
+  # Reading/grabbing /dev/input/event* (server) and creating the virtual device
+  # via /dev/uinput (client). The granular "device=input" permission does NOT
+  # cover /dev/uinput, so full device access is required.
+  - --device=all
+
+modules:
+  - name: deskconnect
+    buildsystem: simple
+    build-commands:
+      # Python package
+      - install -d /app/share/deskconnect/deskconnect
+      - install -m644 src/deskconnect/*.py /app/share/deskconnect/deskconnect/
+      # Launcher (sets up the import path via PYTHONPATH below)
+      - install -Dm755 build-aux/deskconnect.in /app/bin/deskconnect
+      - sed -i '1a export PYTHONPATH=/app/share/deskconnect:$PYTHONPATH' /app/bin/deskconnect
+      # Desktop integration
+      - install -Dm644 data/io.github.mohanviswagnamr.DeskConnect.desktop
+        /app/share/applications/io.github.mohanviswagnamr.DeskConnect.desktop
+      - install -Dm644 data/io.github.mohanviswagnamr.DeskConnect.metainfo.xml
+        /app/share/metainfo/io.github.mohanviswagnamr.DeskConnect.metainfo.xml
+      - install -Dm644 data/io.github.mohanviswagnamr.DeskConnect.svg
+        /app/share/icons/hicolor/scalable/apps/io.github.mohanviswagnamr.DeskConnect.svg
+      # Ship the udev rule as documentation inside the sandbox.
+      - install -Dm644 data/60-deskconnect-uinput.rules
+        /app/share/deskconnect/60-deskconnect-uinput.rules
+    sources:
+      - type: dir
+        path: ..

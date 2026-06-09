@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.mohanviswagnamr.DeskConnect</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Desk Connect</name>
+  <summary>Share one keyboard and mouse across two computers over USB-C</summary>
+  <description>
+    <p>
+      Desk Connect lets you drive a second computer with the keyboard and mouse
+      attached to the first one, using a direct USB-C / Thunderbolt cable instead
+      of Wi-Fi or a network router.
+    </p>
+    <p>
+      Connect the two machines with a Thunderbolt 3/4 or USB4 cable. Each side
+      gets a private point-to-point network interface; Desk Connect streams
+      input events across it with sub-millisecond latency. Press a hotkey
+      (Ctrl+Alt+S by default) to flip control between the local and remote
+      machine.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Works on X11 and Wayland (GNOME and KDE) — injection happens below the compositor via uinput</li>
+      <li>No internet, Wi-Fi, or router required — traffic stays on the cable</li>
+      <li>Exclusive device grab so the local session is untouched while you drive the remote</li>
+      <li>Automatic reconnection if the cable is replugged</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.mohanviswagnamr.DeskConnect.desktop</launchable>
+  <categories>
+    <category>Utility</category>
+    <category>Network</category>
+  </categories>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.0" date="2026-06-09">
+      <description>
+        <p>First release: server/client roles, USB-C link detection, hotkey switching.</p>
+      </description>
+    </release>
+  </releases>
+  <url type="homepage">https://github.com/mohanviswagnamr/desk-connect</url>
+  <url type="bugtracker">https://github.com/mohanviswagnamr/desk-connect/issues</url>
+  <developer id="io.github.mohanviswagnamr">
+    <name>Mohan Viswagna MR</name>
+  </developer>
+</component>

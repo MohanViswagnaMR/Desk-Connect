@@ -1,0 +1,14 @@
+# Desk Connect — allow members of the "input" group to use the virtual input
+# device subsystem without root.
+#
+# Install with:
+#   sudo cp 60-deskconnect-uinput.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#   sudo gpasswd -a "$USER" input      # then log out and back in
+#
+# /dev/uinput is needed on the CLIENT (the machine being controlled) to create
+# the virtual keyboard/mouse. /dev/input/event* is needed on the SERVER (the
+# machine sharing its keyboard/mouse) to read and grab the real devices.
+
+KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"
+SUBSYSTEM=="input", GROUP="input", MODE="0660"
