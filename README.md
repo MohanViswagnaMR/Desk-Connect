@@ -149,12 +149,26 @@ the host permissions above are in place.
 
 ### D. Use it
 
-- **Computer A (keyboard/mouse owner):** open Desk Connect → role **Server** →
-  *Start*. Note the `169.254.x.x` address it shows.
-- **Computer B (to be controlled):** open Desk Connect → role **Client** → enter
-  A's address → *Start*.
-- Press **Ctrl + Alt + S** on A to hand control to B; press it again to come
-  back. The pill shows 🟢 LOCAL or 🔴 REMOTE.
+- **Computer A (keyboard/mouse owner):** open Desk Connect → role **Server**.
+- **Computer B (to be controlled):** open Desk Connect → role **Client**. Leave
+  the address blank — it **auto-discovers** the server over the cable.
+- To hand control to B, either press **Ctrl + Alt + S** on A *or* click
+  **“Take control of other computer”**. Do it again to come back. The pill shows
+  🟢 LOCAL or 🔴 Controlling REMOTE.
+
+> **If the cursor doesn’t move after switching:** the server warns when it
+> cannot read your keyboard/mouse. That almost always means the `input` group
+> isn’t active yet — run `setup-permissions.sh` and **log out and back in**.
+
+### Auto-connect & start at login
+
+- **Auto-connect when cable is detected** (on by default): Desk Connect watches
+  for the USB-C/Thunderbolt interface and starts itself the moment the cable is
+  plugged in — the server begins advertising and the client finds it
+  automatically.
+- **Start Desk Connect at login**: registers an autostart entry through the XDG
+  Background portal so it’s ready in the background after every boot. Combined
+  with auto-connect, plugging the cable “just works”.
 
 ### Headless (no GUI, e.g. over SSH)
 

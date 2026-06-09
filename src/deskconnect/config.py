@@ -28,6 +28,8 @@ class Settings:
     bind_address: str = "0.0.0.0"   # server listen address
     switch_hotkey: list[int] = field(default_factory=lambda: list(DEFAULT_HOTKEY))
     auto_grab_all: bool = True      # grab every keyboard + pointer when active
+    auto_connect: bool = True       # auto-start when the USB-C cable appears
+    start_at_login: bool = False    # register an autostart entry via the portal
 
     @classmethod
     def load(cls) -> "Settings":

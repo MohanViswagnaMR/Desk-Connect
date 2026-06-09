@@ -75,16 +75,23 @@ class ClientEngine:
 
     def _connect_and_serve(self) -> bool:
         addr = self.settings.peer_address.strip()
-        if not addr:
-            self._on_status("Set the server address first.")
-            self._interruptible_sleep(2.0)
-            return False
+        port = self.settings.listen_port
 
-        self._on_status(f"Connecting to {addr}:{self.settings.listen_port}…")
+        # No address typed in: discover the server's UDP beacon over the cable.
+        if not addr:
+            from .discovery import discover_server
+            self._on_status("Searching for a server over the cable…")
+            found = discover_server(timeout=10.0, should_stop=lambda: self._stop)
+            if not found:
+                if self._stop:
+                    return False
+                self._on_status("No server found yet — make sure it is started.")
+                return False
+            addr, port = found
+
+        self._on_status(f"Connecting to {addr}:{port}…")
         try:
-            sock = socket.create_connection(
-                (addr, self.settings.listen_port), timeout=5.0
-            )
+            sock = socket.create_connection((addr, port), timeout=5.0)
         except OSError as exc:
             self._on_status(f"Connection failed: {exc}")
             return False
