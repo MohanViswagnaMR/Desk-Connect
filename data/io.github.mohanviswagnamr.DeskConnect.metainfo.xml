@@ -33,6 +33,12 @@
   </categories>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.3.0" date="2026-06-09">
+      <description>
+        <p>Discovery is now cable-only so traffic never falls back to Wi-Fi, and
+           laptop touchpads work via absolute-to-relative pointer conversion.</p>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-06-09">
       <description>
         <p>Auto-discovery and auto-connect when the cable is plugged in, an

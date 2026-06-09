@@ -66,11 +66,19 @@ REL_WHEEL = 0x08
 REL_WHEEL_HI_RES = 0x0B
 REL_HWHEEL_HI_RES = 0x0C
 
+ABS_X = 0x00
+ABS_Y = 0x01
+ABS_MT_POSITION_X = 0x35
+ABS_MT_POSITION_Y = 0x36
+
 MSC_SCAN = 0x04
 
 BTN_LEFT = 0x110
 BTN_RIGHT = 0x111
 BTN_MIDDLE = 0x112
+BTN_TOUCH = 0x14A
+BTN_TOOL_FIRST = 0x145
+BTN_TOOL_LAST = 0x14F
 
 KEY_MAX = 0x2FF
 REL_MAX = 0x0F
@@ -124,6 +132,14 @@ def _eviocgname(length: int) -> int:
 
 def _eviocgbit(ev: int, length: int) -> int:
     return _ioc(_IOC_READ, "E", 0x20 + ev, length)
+
+
+# struct input_absinfo: value, minimum, maximum, fuzz, flat, resolution (6 x s32)
+_ABSINFO = struct.Struct("6i")
+
+
+def _eviocgabs(axis: int) -> int:
+    return _ior("E", 0x40 + axis, _ABSINFO.size)
 
 
 # uinput ioctls (type 'U')
@@ -266,6 +282,18 @@ class EvdevDevice:
     @property
     def grabbed(self) -> bool:
         return self._grabbed
+
+    def absinfo(self, axis: int) -> tuple[int, int] | None:
+        """Return ``(minimum, maximum)`` for an absolute axis, or None."""
+        buf = bytearray(_ABSINFO.size)
+        try:
+            fcntl.ioctl(self.fd, _eviocgabs(axis), buf)
+        except OSError:
+            return None
+        _value, minimum, maximum, _fuzz, _flat, _res = _ABSINFO.unpack(buf)
+        if maximum <= minimum:
+            return None
+        return minimum, maximum
 
     def read(self) -> Iterator[InputEvent]:
         """Read all currently-available events (call when select() says ready)."""

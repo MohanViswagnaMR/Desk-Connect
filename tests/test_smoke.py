@@ -172,12 +172,22 @@ def test_server_capture_grab_forward():
     assert not fake.grabbed
 
 
-def test_discovery_listen_parse():
-    """discover_server should decode a well-formed beacon packet."""
+def test_discovery_cable_only():
+    """Beacon carrying a cable IP is accepted; a Wi-Fi-only beacon is rejected."""
     import struct as _struct
 
     from deskconnect import discovery
 
+    # A beacon advertising a link-local cable address is honoured...
+    cable_pkt = discovery.MAGIC + _struct.pack(">H", 24850) + b"169.254.7.7"
+    assert discovery._parse(cable_pkt, "192.168.1.50") == ("169.254.7.7", 24850)
+
+    # ...but a beacon with no/!cable advertised IP arriving from a Wi-Fi source
+    # is refused, so we never route input over Wi-Fi.
+    wifi_pkt = discovery.MAGIC + _struct.pack(">H", 24850)
+    assert discovery._parse(wifi_pkt, "192.168.1.50") is None
+
+    # End-to-end over loopback with a proper cable advertisement.
     result = {}
 
     def listen():
@@ -189,15 +199,42 @@ def test_discovery_listen_parse():
     t.start()
     time.sleep(0.3)
     sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    pkt = discovery.MAGIC + _struct.pack(">H", 24850)
     for _ in range(5):
-        sender.sendto(pkt, ("127.0.0.1", discovery.DISCOVERY_PORT))
+        sender.sendto(cable_pkt, ("127.0.0.1", discovery.DISCOVERY_PORT))
         time.sleep(0.1)
     t.join(timeout=4)
     sender.close()
-    assert result.get("found") is not None, "beacon not received"
-    ip, port = result["found"]
-    assert port == 24850, port
+    assert result.get("found") == ("169.254.7.7", 24850), result.get("found")
+
+
+def test_pointer_normalizer():
+    """Touchpad absolute motion becomes relative; mice pass through."""
+    from deskconnect.linux_input import (
+        ABS_X,
+        ABS_Y,
+        BTN_TOUCH,
+        EV_ABS,
+        EV_KEY,
+        EV_REL,
+        REL_X,
+        BTN_LEFT,
+    )
+    from deskconnect.pointer import PointerNormalizer
+
+    # Relative mouse: REL passes straight through.
+    n = PointerNormalizer()
+    assert n.feed(InputEvent(EV_REL, REL_X, 4)) == [InputEvent(EV_REL, REL_X, 4)]
+
+    # Touchpad with a 0..1920 X range -> scale 1.0, deltas from baseline.
+    n = PointerNormalizer(x_range=(0, 1920), y_range=(0, 1080))
+    assert n.feed(InputEvent(EV_ABS, ABS_X, 100)) == []           # baseline
+    assert n.feed(InputEvent(EV_ABS, ABS_X, 110)) == [InputEvent(EV_REL, REL_X, 10)]
+    # Finger lift resets baseline so re-touch elsewhere doesn't fling the cursor.
+    assert n.feed(InputEvent(EV_KEY, BTN_TOUCH, 0)) == []
+    assert n.feed(InputEvent(EV_ABS, ABS_X, 900)) == []           # new baseline
+    assert n.feed(InputEvent(EV_ABS, ABS_X, 905)) == [InputEvent(EV_REL, REL_X, 5)]
+    # Real buttons still pass through.
+    assert n.feed(InputEvent(EV_KEY, BTN_LEFT, 1)) == [InputEvent(EV_KEY, BTN_LEFT, 1)]
 
 
 def test_server_onscreen_toggle():
@@ -268,7 +305,8 @@ def main():
         test_protocol_framing,
         test_client_inject_path,
         test_server_capture_grab_forward,
-        test_discovery_listen_parse,
+        test_discovery_cable_only,
+        test_pointer_normalizer,
         test_server_onscreen_toggle,
     ]
     for t in tests:

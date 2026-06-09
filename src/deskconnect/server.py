@@ -24,12 +24,15 @@ from typing import Callable, Optional
 from . import protocol
 from .config import Settings
 from .linux_input import (
+    ABS_X,
+    ABS_Y,
     EV_KEY,
     EV_SYN,
     EvdevDevice,
     InputEvent,
     list_devices,
 )
+from .pointer import PointerNormalizer
 
 StatusCb = Callable[[str], None]
 StateCb = Callable[[bool], None]
@@ -80,6 +83,7 @@ class ServerEngine:
         self._toggle_pending = False
 
         self._devices: list[EvdevDevice] = []
+        self._norms: dict[str, PointerNormalizer] = {}
         self._conn: Optional[socket.socket] = None
         self._remote_active = False
         self._hotkey = HotkeyMatcher(settings.switch_hotkey)
@@ -116,9 +120,16 @@ class ServerEngine:
         infos = [d for d in list_devices() if d.kind in ("keyboard", "mouse", "pointer")]
         for info in infos:
             try:
-                self._devices.append(EvdevDevice(info.path))
+                dev = EvdevDevice(info.path)
             except OSError as exc:
                 self._on_status(f"Could not open {info.path}: {exc}")
+                continue
+            self._devices.append(dev)
+            # Build a per-device pointer normaliser. Touchpads (absolute) get
+            # their axis ranges so motion is scaled to a sensible pixel speed.
+            x_range = dev.absinfo(ABS_X) if info.has_abs else None
+            y_range = dev.absinfo(ABS_Y) if info.has_abs else None
+            self._norms[info.path] = PointerNormalizer(x_range, y_range)
         self.device_count = len(self._devices)
         if not self._devices:
             self._on_status(
@@ -131,6 +142,7 @@ class ServerEngine:
         for dev in self._devices:
             dev.close()
         self._devices = []
+        self._norms = {}
 
     def _set_remote(self, active: bool) -> None:
         if active == self._remote_active:
@@ -191,6 +203,7 @@ class ServerEngine:
             self._drop_client()
 
     def _handle_events(self, dev: EvdevDevice) -> None:
+        norm = self._norms.get(dev.path)
         for event in dev.read():
             # The hotkey is evaluated on every event so it works in both states.
             if self._hotkey.feed(event):
@@ -201,7 +214,9 @@ class ServerEngine:
             # Don't leak the modifier keys of the switch chord to the remote.
             if event.type == EV_KEY and self._hotkey.is_combo_key(event.code):
                 continue
-            self._forward(event)
+            # Convert touchpad absolute motion to relative; mice pass through.
+            for out in (norm.feed(event) if norm else [event]):
+                self._forward(out)
 
     def _run(self) -> None:
         listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

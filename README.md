@@ -179,13 +179,30 @@ python3 -m deskconnect --headless --role client --peer 169.254.10.20
 
 ---
 
-## Limitations (v1)
+## Staying off Wi-Fi
 
-- **Relative mice work best.** Touchpads/tablets that emit only absolute
-  (`EV_ABS`) coordinates are not yet mapped across the two screens.
-- **Switching is hotkey‑based**, not screen‑edge based. Edge switching needs the
-  global cursor position, which Wayland does not expose to clients; a hotkey is
-  reliable everywhere.
+Keeping traffic on the cable is the whole point, so discovery is **cable-only**.
+The server advertises (and the client dials) the cable's `169.254.x.x`
+link-local address — never the Wi-Fi IP. If no real cable interface exists, the
+server stays silent rather than falling back to the network. (A USB bridge cable
+that hands out a private subnet is accepted only when both ends share that
+subnet, so a Wi-Fi peer is never dialled.)
+
+## Mice and touchpads
+
+Plain mice send *relative* motion and are forwarded as-is. Laptop **touchpads**
+send *absolute* coordinates, which a virtual relative pointer can't replay — so
+the server converts touchpad motion to relative deltas (scaled to the pad's
+range, with the baseline reset on finger-lift so re-touching never flings the
+cursor). That's why early builds typed on the remote but didn't move its cursor
+from a laptop.
+
+## Limitations
+
+- **Absolute tablets** (pen digitizers) are not yet mapped across screens.
+- **Switching is hotkey‑based** (or the on-screen button), not screen‑edge based.
+  Edge switching needs the global cursor position, which Wayland does not expose
+  to clients; a hotkey is reliable everywhere.
 - **No clipboard sharing yet** (Wayland clipboard bridging is a separate, larger
   feature).
 - One client per server.
