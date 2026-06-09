@@ -56,6 +56,10 @@ def main() -> int:
         "--headless", action="store_true",
         help="run the engine without the GTK interface",
     )
+    parser.add_argument(
+        "--autostart", action="store_true",
+        help="launched at login; auto-connect when the cable is present",
+    )
     parser.add_argument("--role", choices=["server", "client"], default="server")
     parser.add_argument("--peer", help="server address (client role)")
     parser.add_argument("--port", type=int, help="override the TCP port")
@@ -65,7 +69,7 @@ def main() -> int:
         return _run_headless(args)
 
     from .app import main as gui_main
-    return gui_main()
+    return gui_main(autostart_requested=args.autostart)
 
 
 if __name__ == "__main__":

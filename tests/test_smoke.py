@@ -172,12 +172,104 @@ def test_server_capture_grab_forward():
     assert not fake.grabbed
 
 
+def test_discovery_listen_parse():
+    """discover_server should decode a well-formed beacon packet."""
+    import struct as _struct
+
+    from deskconnect import discovery
+
+    result = {}
+
+    def listen():
+        result["found"] = discovery.discover_server(
+            timeout=3.0, should_stop=lambda: False
+        )
+
+    t = threading.Thread(target=listen, daemon=True)
+    t.start()
+    time.sleep(0.3)
+    sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    pkt = discovery.MAGIC + _struct.pack(">H", 24850)
+    for _ in range(5):
+        sender.sendto(pkt, ("127.0.0.1", discovery.DISCOVERY_PORT))
+        time.sleep(0.1)
+    t.join(timeout=4)
+    sender.close()
+    assert result.get("found") is not None, "beacon not received"
+    ip, port = result["found"]
+    assert port == 24850, port
+
+
+def test_server_onscreen_toggle():
+    """request_toggle() must switch control without the hotkey."""
+    class FakeDev:
+        def __init__(self, path):
+            self.path = path
+            self._r, self._w = os.pipe()
+            self.grabbed = False
+            self._queue = []
+
+        def fileno(self): return self._r
+        def grab(self): self.grabbed = True
+        def ungrab(self): self.grabbed = False
+
+        def feed(self, events):
+            self._queue.extend(events)
+            os.write(self._w, b"x")
+
+        def read(self):
+            os.read(self._r, 64)
+            q, self._queue = self._queue, []
+            return iter(q)
+
+        def close(self):
+            os.close(self._r)
+            os.close(self._w)
+
+    fake = FakeDev("/dev/input/eventX")
+    server.list_devices = lambda: [
+        DeviceInfo("/dev/input/eventX", "Fake", has_keys=True, has_rel=True)
+    ]
+    server.EvdevDevice = lambda path: fake
+
+    probe = socket.socket()
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+
+    eng = server.ServerEngine(
+        Settings(role="server", bind_address="127.0.0.1", listen_port=port),
+        lambda m: None, lambda a: None, lambda c: None,
+    )
+    eng.start()
+    time.sleep(0.3)
+    cli = socket.create_connection(("127.0.0.1", port), timeout=2)
+    cli.recv(1024)
+    time.sleep(0.2)
+
+    eng.request_toggle()  # on-screen button equivalent
+    time.sleep(0.3)
+    assert fake.grabbed, "toggle did not grab"
+
+    cli.settimeout(2)
+    fake.feed([InputEvent(EV_REL, REL_X, 5)])
+    time.sleep(0.2)
+    evs = [proto.decode_event(m.body)
+           for m in proto.Decoder().feed(cli.recv(4096))
+           if m.kind == proto.KIND_EVENT]
+    assert InputEvent(EV_REL, REL_X, 5) in evs
+    eng.stop()
+    cli.close()
+
+
 def main():
     tests = [
         test_ioctl_numbers,
         test_protocol_framing,
         test_client_inject_path,
         test_server_capture_grab_forward,
+        test_discovery_listen_parse,
+        test_server_onscreen_toggle,
     ]
     for t in tests:
         t()

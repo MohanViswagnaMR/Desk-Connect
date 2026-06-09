@@ -77,11 +77,14 @@ class ServerEngine:
         self._thread: Optional[threading.Thread] = None
         self._wake_r, self._wake_w = os.pipe()
         self._stop = False
+        self._toggle_pending = False
 
         self._devices: list[EvdevDevice] = []
         self._conn: Optional[socket.socket] = None
         self._remote_active = False
         self._hotkey = HotkeyMatcher(settings.switch_hotkey)
+        self._beacon = None  # type: ignore[assignment]
+        self.device_count = 0
 
     # -- lifecycle ---------------------------------------------------------
     def start(self) -> None:
@@ -93,12 +96,20 @@ class ServerEngine:
 
     def stop(self) -> None:
         self._stop = True
+        self._wake()
+        if self._thread:
+            self._thread.join(timeout=2.0)
+
+    def request_toggle(self) -> None:
+        """Flip LOCAL/REMOTE from another thread (the on-screen button)."""
+        self._toggle_pending = True
+        self._wake()
+
+    def _wake(self) -> None:
         try:
             os.write(self._wake_w, b"x")
         except OSError:
             pass
-        if self._thread:
-            self._thread.join(timeout=2.0)
 
     # -- internals ---------------------------------------------------------
     def _open_devices(self) -> None:
@@ -108,10 +119,12 @@ class ServerEngine:
                 self._devices.append(EvdevDevice(info.path))
             except OSError as exc:
                 self._on_status(f"Could not open {info.path}: {exc}")
+        self.device_count = len(self._devices)
         if not self._devices:
             self._on_status(
-                "No input devices could be opened. Check that the udev rule is "
-                "installed and you are in the 'input' group."
+                "⚠ No input devices could be opened — you cannot control the "
+                "remote yet. Run setup-permissions.sh, then LOG OUT and back in "
+                "so the 'input' group takes effect."
             )
 
     def _close_devices(self) -> None:
@@ -146,7 +159,12 @@ class ServerEngine:
             return
         self._conn = conn
         self._on_client(addr[0])
-        self._on_status(f"Client connected from {addr[0]}")
+        hint = (
+            "Press the switch hotkey (or the on-screen button) to drive it."
+            if self.device_count
+            else "But no input devices are readable — see the warning above."
+        )
+        self._on_status(f"Client connected from {addr[0]}. {hint}")
         try:
             from .link import hostname
             conn.sendall(protocol.encode_hello("server", hostname()))
@@ -197,6 +215,11 @@ class ServerEngine:
             return
 
         self._open_devices()
+
+        # Announce ourselves so clients can auto-discover us over the cable.
+        from .discovery import Beacon
+        self._beacon = Beacon(self.settings.listen_port)
+        self._beacon.start()
         self._on_status("Waiting for a client to connect…")
 
         try:
@@ -213,6 +236,10 @@ class ServerEngine:
 
                 if self._wake_r in ready_set:
                     os.read(self._wake_r, 64)
+                if self._toggle_pending:
+                    self._toggle_pending = False
+                    if self._conn is not None and self.device_count:
+                        self._set_remote(not self._remote_active)
                 if listen_fd in ready_set:
                     self._accept(listener)
                 if conn_fd >= 0 and conn_fd in ready_set:
@@ -227,6 +254,9 @@ class ServerEngine:
                             if dev in self._devices:
                                 self._devices.remove(dev)
         finally:
+            if self._beacon is not None:
+                self._beacon.stop()
+                self._beacon = None
             self._set_remote(False)
             self._drop_client()
             self._close_devices()

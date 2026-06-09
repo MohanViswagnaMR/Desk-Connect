@@ -33,6 +33,12 @@
   </categories>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.2.0" date="2026-06-09">
+      <description>
+        <p>Auto-discovery and auto-connect when the cable is plugged in, an
+           on-screen control button, start-at-login, and clearer diagnostics.</p>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-06-09">
       <description>
         <p>First release: server/client roles, USB-C link detection, hotkey switching.</p>
