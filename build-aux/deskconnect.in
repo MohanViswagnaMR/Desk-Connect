@@ -1,0 +1,3 @@
+#!/bin/sh
+# Desk Connect launcher: run the Python package shipped under /app/share.
+exec python3 -m deskconnect "$@"

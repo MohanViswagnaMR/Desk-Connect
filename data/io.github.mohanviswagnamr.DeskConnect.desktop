@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Desk Connect
+Comment=Share one keyboard and mouse across two computers over a USB-C cable
+Type=Application
+Exec=deskconnect
+Icon=io.github.mohanviswagnamr.DeskConnect
+Terminal=false
+Categories=Utility;Network;GTK;
+Keywords=kvm;keyboard;mouse;share;usb-c;thunderbolt;remote;
+StartupNotify=true
