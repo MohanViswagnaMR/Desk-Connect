@@ -108,6 +108,19 @@ def cable_interfaces() -> list[LinkInterface]:
     return [i for i in ifaces if i.looks_like_cable] or ifaces
 
 
+def best_cable_interface() -> LinkInterface | None:
+    """The single most likely USB-C/Thunderbolt cable interface, if any."""
+    for iface in cable_interfaces():
+        if iface.looks_like_cable:
+            return iface
+    return None
+
+
+def best_cable_address() -> str | None:
+    iface = best_cable_interface()
+    return iface.address if iface else None
+
+
 def hostname() -> str:
     try:
         return socket.gethostname()
