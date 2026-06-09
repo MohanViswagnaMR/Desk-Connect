@@ -65,6 +65,8 @@ def test_client_inject_path():
         def close(self): pass
 
     client.UInput = FakeUInput
+    from deskconnect import link as _link
+    _link.best_cable_address = lambda: "127.0.0.1"  # pretend loopback is the cable
 
     srv = socket.socket()
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -124,6 +126,8 @@ def test_server_capture_grab_forward():
         DeviceInfo("/dev/input/eventX", "Fake", has_keys=True, has_rel=True)
     ]
     server.EvdevDevice = lambda path: fake
+    from deskconnect import link as _link
+    _link.best_cable_address = lambda: "127.0.0.1"
 
     probe = socket.socket()
     probe.bind(("127.0.0.1", 0))
@@ -207,34 +211,58 @@ def test_discovery_cable_only():
     assert result.get("found") == ("169.254.7.7", 24850), result.get("found")
 
 
-def test_pointer_normalizer():
-    """Touchpad absolute motion becomes relative; mice pass through."""
+def test_pointer_touchpad():
+    """Touchpad motion, taps and two-finger scroll are synthesised; mice pass through."""
     from deskconnect.linux_input import (
         ABS_X,
         ABS_Y,
+        BTN_LEFT,
+        BTN_RIGHT,
+        BTN_TOOL_DOUBLETAP,
+        BTN_TOOL_FINGER,
         BTN_TOUCH,
         EV_ABS,
         EV_KEY,
         EV_REL,
+        REL_WHEEL,
         REL_X,
-        BTN_LEFT,
     )
-    from deskconnect.pointer import PointerNormalizer
+    from deskconnect.pointer import make_pointer
 
-    # Relative mouse: REL passes straight through.
-    n = PointerNormalizer()
-    assert n.feed(InputEvent(EV_REL, REL_X, 4)) == [InputEvent(EV_REL, REL_X, 4)]
+    # Relative mouse: passes straight through.
+    m = make_pointer(False)
+    assert m.feed(InputEvent(EV_REL, REL_X, 4)) == [InputEvent(EV_REL, REL_X, 4)]
 
-    # Touchpad with a 0..1920 X range -> scale 1.0, deltas from baseline.
-    n = PointerNormalizer(x_range=(0, 1920), y_range=(0, 1080))
-    assert n.feed(InputEvent(EV_ABS, ABS_X, 100)) == []           # baseline
-    assert n.feed(InputEvent(EV_ABS, ABS_X, 110)) == [InputEvent(EV_REL, REL_X, 10)]
-    # Finger lift resets baseline so re-touch elsewhere doesn't fling the cursor.
-    assert n.feed(InputEvent(EV_KEY, BTN_TOUCH, 0)) == []
-    assert n.feed(InputEvent(EV_ABS, ABS_X, 900)) == []           # new baseline
-    assert n.feed(InputEvent(EV_ABS, ABS_X, 905)) == [InputEvent(EV_REL, REL_X, 5)]
-    # Real buttons still pass through.
-    assert n.feed(InputEvent(EV_KEY, BTN_LEFT, 1)) == [InputEvent(EV_KEY, BTN_LEFT, 1)]
+    # Single-finger motion -> relative deltas (scale 1.0 for a 0..1920 range).
+    tp = make_pointer(True, (0, 1920), (0, 1080))
+    tp.feed(InputEvent(EV_KEY, BTN_TOUCH, 1))
+    tp.feed(InputEvent(EV_KEY, BTN_TOOL_FINGER, 1))
+    assert tp.feed(InputEvent(EV_ABS, ABS_X, 100)) == []           # baseline
+    assert tp.feed(InputEvent(EV_ABS, ABS_X, 110)) == [InputEvent(EV_REL, REL_X, 10)]
+
+    # Quick light single-finger contact -> left click.
+    tp = make_pointer(True, (0, 1920), (0, 1080))
+    tp.feed(InputEvent(EV_KEY, BTN_TOUCH, 1))
+    tp.feed(InputEvent(EV_KEY, BTN_TOOL_FINGER, 1))
+    out = tp.feed(InputEvent(EV_KEY, BTN_TOUCH, 0))
+    assert InputEvent(EV_KEY, BTN_LEFT, 1) in out
+    assert InputEvent(EV_KEY, BTN_LEFT, 0) in out
+
+    # Two-finger tap -> right click.
+    tp = make_pointer(True, (0, 1920), (0, 1080))
+    tp.feed(InputEvent(EV_KEY, BTN_TOUCH, 1))
+    tp.feed(InputEvent(EV_KEY, BTN_TOOL_DOUBLETAP, 1))
+    out = tp.feed(InputEvent(EV_KEY, BTN_TOUCH, 0))
+    assert InputEvent(EV_KEY, BTN_RIGHT, 1) in out
+
+    # Two-finger drag -> scroll wheel (no cursor motion).
+    tp = make_pointer(True, (0, 1080), (0, 1080))  # y scale = 1.0
+    tp.feed(InputEvent(EV_KEY, BTN_TOUCH, 1))
+    tp.feed(InputEvent(EV_KEY, BTN_TOOL_DOUBLETAP, 1))
+    tp.feed(InputEvent(EV_ABS, ABS_Y, 100))            # baseline
+    out = tp.feed(InputEvent(EV_ABS, ABS_Y, 200))      # 100px -> several notches
+    assert out and all(e.code == REL_WHEEL for e in out), out
+    assert not any(e.code == REL_X for e in out)
 
 
 def test_server_onscreen_toggle():
@@ -268,6 +296,8 @@ def test_server_onscreen_toggle():
         DeviceInfo("/dev/input/eventX", "Fake", has_keys=True, has_rel=True)
     ]
     server.EvdevDevice = lambda path: fake
+    from deskconnect import link as _link
+    _link.best_cable_address = lambda: "127.0.0.1"
 
     probe = socket.socket()
     probe.bind(("127.0.0.1", 0))
@@ -306,7 +336,7 @@ def main():
         test_client_inject_path,
         test_server_capture_grab_forward,
         test_discovery_cable_only,
-        test_pointer_normalizer,
+        test_pointer_touchpad,
         test_server_onscreen_toggle,
     ]
     for t in tests:

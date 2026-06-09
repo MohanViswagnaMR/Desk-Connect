@@ -74,10 +74,23 @@ class ClientEngine:
             self._on_status("Stopped")
 
     def _connect_and_serve(self) -> bool:
+        from .link import best_cable_address
+
         addr = self.settings.peer_address.strip()
         port = self.settings.listen_port
 
-        # No address typed in: discover the server's UDP beacon over the cable.
+        # Require the cable: refuse to run if there is no USB-C/Thunderbolt link,
+        # so we can never accidentally route input over Wi-Fi.
+        cable_ip = best_cable_address()
+        if not cable_ip:
+            self._on_status(
+                "No USB-C / Thunderbolt cable link found. Connect the cable — "
+                "Desk Connect never uses Wi-Fi."
+            )
+            self._interruptible_sleep(2.0)
+            return False
+
+        # No address typed in: discover the server's beacon (cable-only).
         if not addr:
             from .discovery import discover_server
             self._on_status("Searching for a server over the cable…")
@@ -89,9 +102,13 @@ class ClientEngine:
                 return False
             addr, port = found
 
-        self._on_status(f"Connecting to {addr}:{port}…")
+        self._on_status(f"Connecting to {addr}:{port} over the cable…")
         try:
-            sock = socket.create_connection((addr, port), timeout=5.0)
+            # Bind the outgoing connection to our cable address so the TCP
+            # session leaves via the wire, never Wi-Fi.
+            sock = socket.create_connection(
+                (addr, port), timeout=5.0, source_address=(cable_ip, 0)
+            )
         except OSError as exc:
             self._on_status(f"Connection failed: {exc}")
             return False

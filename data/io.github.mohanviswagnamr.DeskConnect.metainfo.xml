@@ -33,6 +33,14 @@
   </categories>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.4.0" date="2026-06-09">
+      <description>
+        <p>The connection now binds strictly to the cable's link-local address
+           on both ends, so Wi-Fi can never be used, and announcing stops once
+           connected. Touchpads gain tap-to-click, two/three-finger taps and
+           two-finger scroll.</p>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-06-09">
       <description>
         <p>Discovery is now cable-only so traffic never falls back to Wi-Fi, and
