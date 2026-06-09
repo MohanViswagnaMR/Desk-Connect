@@ -179,23 +179,37 @@ python3 -m deskconnect --headless --role client --peer 169.254.10.20
 
 ---
 
-## Staying off Wi-Fi
+## Staying off Wi-Fi — guaranteed
 
-Keeping traffic on the cable is the whole point, so discovery is **cable-only**.
-The server advertises (and the client dials) the cable's `169.254.x.x`
-link-local address — never the Wi-Fi IP. If no real cable interface exists, the
-server stays silent rather than falling back to the network. (A USB bridge cable
-that hands out a private subnet is accepted only when both ends share that
-subnet, so a Wi-Fi peer is never dialled.)
+Keeping traffic on the cable is the whole point, so Wi-Fi is made *impossible*,
+not merely avoided:
+
+1. **The server's TCP socket binds only to the cable's `169.254.x.x` link-local
+   address.** It is literally not listening on the Wi-Fi interface, so nothing
+   can connect to it over Wi-Fi.
+2. **The client binds its outgoing connection to its own cable address**, so the
+   session leaves via the wire.
+3. **If there is no cable interface, neither side starts** — there is no network
+   fallback. You'll see "No USB-C / Thunderbolt cable link found".
+4. **Discovery only chirps on the cable** (bound to the cable interface, sent to
+   the link-local broadcast — which never crosses Wi-Fi) and **stops the instant
+   a client connects**, so there is no continuous broadcast.
+
+> If you ever saw it use Wi-Fi, you were almost certainly running an older build
+> from a different branch — check `cat src/deskconnect/__init__.py` shows the
+> latest version and that you built from the `claude/keen-ritchie-uubcvg` branch.
 
 ## Mice and touchpads
 
-Plain mice send *relative* motion and are forwarded as-is. Laptop **touchpads**
-send *absolute* coordinates, which a virtual relative pointer can't replay — so
-the server converts touchpad motion to relative deltas (scaled to the pad's
-range, with the baseline reset on finger-lift so re-touching never flings the
-cursor). That's why early builds typed on the remote but didn't move its cursor
-from a laptop.
+Plain mice send *relative* motion and pass straight through. Laptop **touchpads**
+report only *absolute* finger coordinates at the raw level (libinput normally
+synthesises the gestures), so Desk Connect synthesises them itself:
+
+- **move** — single-finger motion → relative pointer motion (scaled to the pad);
+- **tap to click** — a quick light tap → left click; **two-finger tap** → right
+  click; **three-finger tap** → middle click;
+- **two-finger drag** → scroll wheel;
+- a physical **click-pad press** passes through as a normal left button.
 
 ## Limitations
 

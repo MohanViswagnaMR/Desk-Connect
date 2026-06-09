@@ -32,7 +32,7 @@ from .linux_input import (
     InputEvent,
     list_devices,
 )
-from .pointer import PointerNormalizer
+from .pointer import make_pointer
 
 StatusCb = Callable[[str], None]
 StateCb = Callable[[bool], None]
@@ -83,7 +83,7 @@ class ServerEngine:
         self._toggle_pending = False
 
         self._devices: list[EvdevDevice] = []
-        self._norms: dict[str, PointerNormalizer] = {}
+        self._norms: dict[str, object] = {}
         self._conn: Optional[socket.socket] = None
         self._remote_active = False
         self._hotkey = HotkeyMatcher(settings.switch_hotkey)
@@ -125,11 +125,12 @@ class ServerEngine:
                 self._on_status(f"Could not open {info.path}: {exc}")
                 continue
             self._devices.append(dev)
-            # Build a per-device pointer normaliser. Touchpads (absolute) get
-            # their axis ranges so motion is scaled to a sensible pixel speed.
+            # Build a per-device pointer processor. Touchpads (absolute) get
+            # their axis ranges so motion/scroll are scaled sensibly and gestures
+            # (tap-to-click, two-finger scroll) are synthesised.
             x_range = dev.absinfo(ABS_X) if info.has_abs else None
             y_range = dev.absinfo(ABS_Y) if info.has_abs else None
-            self._norms[info.path] = PointerNormalizer(x_range, y_range)
+            self._norms[info.path] = make_pointer(info.has_abs, x_range, y_range)
         self.device_count = len(self._devices)
         if not self._devices:
             self._on_status(
@@ -170,6 +171,10 @@ class ServerEngine:
             conn.close()
             return
         self._conn = conn
+        # Stop announcing the moment a client is connected — no continuous
+        # broadcast, and it only ever went out over the cable anyway.
+        if self._beacon is not None:
+            self._beacon.stop()
         self._on_client(addr[0])
         hint = (
             "Press the switch hotkey (or the on-screen button) to drive it."
@@ -192,6 +197,9 @@ class ServerEngine:
             self._conn = None
         self._set_remote(False)
         self._on_client("")
+        # Resume announcing on the cable so the client can find us again.
+        if self._beacon is not None and not self._stop:
+            self._beacon.start()
         self._on_status("Waiting for a client to connect…")
 
     def _forward(self, event: InputEvent) -> None:
@@ -219,15 +227,28 @@ class ServerEngine:
                 self._forward(out)
 
     def _run(self) -> None:
+        # Bind ONLY to the USB-C/Thunderbolt cable address. The socket is then
+        # physically unreachable over Wi-Fi — there is no network fallback.
+        from .link import best_cable_address
+
+        bind_ip = best_cable_address()
+        if not bind_ip:
+            self._on_status(
+                "No USB-C / Thunderbolt cable link found. Connect the cable and "
+                "try again — Desk Connect never uses Wi-Fi."
+            )
+            return
+
         listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            listener.bind((self.settings.bind_address, self.settings.listen_port))
+            listener.bind((bind_ip, self.settings.listen_port))
             listener.listen(1)
         except OSError as exc:
-            self._on_status(f"Could not listen on port {self.settings.listen_port}: {exc}")
+            self._on_status(f"Could not listen on {bind_ip}:{self.settings.listen_port}: {exc}")
             listener.close()
             return
+        self._on_status(f"Listening on the cable at {bind_ip} (Wi-Fi is not used).")
 
         self._open_devices()
 
